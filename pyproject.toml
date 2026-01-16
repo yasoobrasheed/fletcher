@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "agent-manager"
+version = "0.1.0"
+description = "CLI tool for managing Claude Code agents in isolated git clones"
+readme = "README.md"
+requires-python = ">=3.8"
+authors = [
+    {name = "Agent Manager Team"}
+]
+dependencies = [
+    "click>=8.0",
+    "gitpython>=3.1",
+    "tabulate>=0.9",
+]
+
+[project.scripts]
+am = "agent_manager.cli:cli"
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "pytest-cov>=4.0",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["agent_manager*"]
