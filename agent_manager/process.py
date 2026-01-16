@@ -22,8 +22,37 @@ class AgentProcess:
         self.store = store
         self._tmux_session: Optional[str] = None
 
-    def spawn_interactive(self) -> int:
+    def _start_claude_with_skip_permissions(self, session_name: str):
+        """Start Claude with skip permissions flag and auto-accept the prompt.
+
+        Args:
+            session_name: The tmux session name
+        """
+        # Send command to start claude with skip permissions flag
+        subprocess.run(
+            ['tmux', 'send-keys', '-t', session_name, 'claude --dangerously-skip-permissions'],
+            check=True,
+            capture_output=True
+        )
+
+        # Give Claude a moment to show the permissions prompt
+        time.sleep(1.0)
+
+        # Navigate to "Yes, I accept" option (down arrow) and confirm
+        subprocess.run(
+            ['tmux', 'send-keys', '-t', session_name, 'Down', 'C-m'],
+            check=True,
+            capture_output=True
+        )
+
+        # Give Claude a moment to start after accepting
+        time.sleep(0.5)
+
+    def spawn_interactive(self, skip_permissions: bool = False) -> int:
         """Spawn agent in interactive mode using tmux.
+
+        Args:
+            skip_permissions: If True, skip Claude's permission prompts (USE WITH CAUTION)
 
         Returns:
             Process ID of the Claude process
@@ -56,15 +85,18 @@ class AgentProcess:
                 capture_output=True
             )
 
-            # Send command to start claude in the tmux session
-            subprocess.run(
-                ['tmux', 'send-keys', '-t', session_name, 'claude', 'Enter'],
-                check=True,
-                capture_output=True
-            )
-
-            # Give Claude a moment to start
-            time.sleep(0.5)
+            # Start Claude in the tmux session
+            if skip_permissions:
+                self._start_claude_with_skip_permissions(session_name)
+            else:
+                # Send command to start claude normally
+                subprocess.run(
+                    ['tmux', 'send-keys', '-t', session_name, 'claude', 'C-m'],
+                    check=True,
+                    capture_output=True
+                )
+                # Give Claude a moment to start
+                time.sleep(0.5)
 
             # Get the PID of the Claude process
             result = subprocess.run(

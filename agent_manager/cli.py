@@ -20,13 +20,16 @@ def cli():
 
 @cli.command()
 @click.argument('repo_url')
-def spawn(repo_url: str):
+@click.option('--skip-permissions', is_flag=True,
+              help='Skip Claude permission prompts (USE WITH CAUTION - only in sandboxed environments)')
+def spawn(repo_url: str, skip_permissions: bool):
     """Spawn a new agent with a fresh repository clone in interactive mode.
 
     REPO_URL: Git repository URL (https or git)
 
     Examples:
         am spawn https://github.com/user/repo
+        am spawn https://github.com/user/repo --skip-permissions
     """
     # Validate Claude CLI availability
     if not utils.check_claude_cli():
@@ -39,7 +42,7 @@ def spawn(repo_url: str):
     try:
         click.echo(f"Spawning agent for repository: {repo_url}")
 
-        agent_id = manager.spawn_agent(repo_url=repo_url)
+        agent_id = manager.spawn_agent(repo_url=repo_url, skip_permissions=skip_permissions)
 
         click.echo(click.style(f"\nAgent spawned successfully!", fg='green'))
         click.echo(f"Agent ID: {agent_id}")

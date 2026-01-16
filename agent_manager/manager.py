@@ -21,11 +21,12 @@ class AgentManager:
         self.store = store or AgentStore()
         self.active_processes: Dict[str, AgentProcess] = {}
 
-    def spawn_agent(self, repo_url: str) -> str:
+    def spawn_agent(self, repo_url: str, skip_permissions: bool = False) -> str:
         """Spawn a new agent with a fresh repository clone in interactive mode.
 
         Args:
             repo_url: Git repository URL to clone
+            skip_permissions: If True, skip Claude's permission prompts (USE WITH CAUTION)
 
         Returns:
             Agent ID
@@ -64,11 +65,16 @@ class AgentManager:
             print(f"Cloning repository to {working_dir}...")
             utils.clone_repository(repo_url, str(working_dir))
 
+            # Create and checkout agent-specific branch
+            branch_name = f"agent-dev/{agent_id}"
+            print(f"Creating branch: {branch_name}")
+            utils.create_and_checkout_branch(str(working_dir), branch_name)
+
             # Create process manager
             process = AgentProcess(agent_id, str(working_dir), self.store)
 
             # Spawn in interactive mode
-            pid = process.spawn_interactive()
+            pid = process.spawn_interactive(skip_permissions=skip_permissions)
             status = "running"
 
             # Update agent record with PID and status

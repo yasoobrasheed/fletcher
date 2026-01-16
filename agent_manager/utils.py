@@ -143,6 +143,28 @@ def terminate_process(pid: int, timeout: int = 5) -> bool:
         return False
 
 
+def create_and_checkout_branch(repo_path: str, branch_name: str) -> bool:
+    """Create and checkout a new branch in a git repository.
+
+    Args:
+        repo_path: Path to the git repository
+        branch_name: Name of the branch to create
+
+    Returns:
+        True if successful
+
+    Raises:
+        git.exc.GitCommandError: If branch creation fails
+    """
+    try:
+        repo = git.Repo(repo_path)
+        # Create and checkout new branch
+        repo.git.checkout('-b', branch_name)
+        return True
+    except git.exc.GitCommandError as e:
+        raise e
+
+
 def validate_repo_url(repo_url: str) -> bool:
     """Validate a repository URL format.
 
