@@ -6,7 +6,9 @@ from pathlib import Path
 
 from .store import AgentStore
 from .process import AgentProcess
+from .container_process import ContainerAgentProcess
 from . import utils
+from . import docker_utils
 
 
 class AgentManager:
@@ -21,12 +23,18 @@ class AgentManager:
         self.store = store or AgentStore()
         self.active_processes: Dict[str, AgentProcess] = {}
 
-    def spawn_agent(self, repo_url: str, skip_permissions: bool = False) -> str:
+    def spawn_agent(
+        self,
+        repo_url: str,
+        skip_permissions: bool = False,
+        use_container: bool = False
+    ) -> str:
         """Spawn a new agent with a fresh repository clone in interactive mode.
 
         Args:
             repo_url: Git repository URL to clone
             skip_permissions: If True, skip Claude's permission prompts (USE WITH CAUTION)
+            use_container: If True, spawn agent in isolated Docker container
 
         Returns:
             Agent ID
@@ -58,7 +66,8 @@ class AgentManager:
                 agent_id=agent_id,
                 repo_url=repo_url,
                 working_dir=str(working_dir),
-                status="spawning"
+                status="spawning",
+                container_mode=use_container
             )
 
             # Clone repository
@@ -70,15 +79,21 @@ class AgentManager:
             print(f"Creating branch: {branch_name}")
             utils.create_and_checkout_branch(str(working_dir), branch_name)
 
-            # Create process manager
-            process = AgentProcess(agent_id, str(working_dir), self.store)
-
-            # Spawn in interactive mode
-            pid = process.spawn_interactive(skip_permissions=skip_permissions)
-            status = "running"
-
-            # Update agent record with PID and status
-            self.store.update_agent(agent_id, pid=pid, status=status)
+            # Create process manager based on mode
+            if use_container:
+                process = ContainerAgentProcess(agent_id, str(working_dir), self.store)
+                # For containers, we store the container ID instead of PID
+                container_id = process.spawn_interactive(skip_permissions=skip_permissions)
+                status = "running"
+                # Update agent record with container ID as "pid" for now
+                self.store.update_agent(agent_id, pid=container_id, status=status)
+            else:
+                process = AgentProcess(agent_id, str(working_dir), self.store)
+                # Spawn in interactive mode
+                pid = process.spawn_interactive(skip_permissions=skip_permissions)
+                status = "running"
+                # Update agent record with PID and status
+                self.store.update_agent(agent_id, pid=pid, status=status)
 
             # Track active process
             self.active_processes[agent_id] = process
@@ -93,14 +108,14 @@ class AgentManager:
             raise RuntimeError(f"Failed to spawn agent: {e}")
 
     def attach_agent(self, agent_id: str):
-        """Attach to an agent's interactive session via tmux.
+        """Attach to an agent's interactive session (tmux or container).
 
         Args:
             agent_id: Agent identifier
 
         Raises:
             ValueError: If agent not found
-            RuntimeError: If tmux session not found
+            RuntimeError: If session/container not found
         """
         import subprocess
 
@@ -108,38 +123,59 @@ class AgentManager:
         if not agent:
             raise ValueError(f"Agent not found: {agent_id}")
 
-        # Check if tmux session exists
-        session_name = f"agent-{agent_id}"
-        result = subprocess.run(
-            ['tmux', 'has-session', '-t', session_name],
-            capture_output=True,
-            check=False
-        )
+        # Check if agent is in container mode
+        is_container = agent.get('container_mode', 0) == 1
 
-        if result.returncode != 0:
-            # Update status if process is not running
-            if agent['status'] == 'running':
-                self.store.update_agent(agent_id, status='stopped')
-            raise RuntimeError(
-                f"No tmux session found for agent {agent_id}. "
-                "The agent may have exited or was not started in interactive mode."
+        if is_container:
+            # Attach to container
+            container_name = f"agent-{agent_id}"
+
+            # Check if container exists and is running
+            if not docker_utils.container_exists(container_name):
+                if agent['status'] == 'running':
+                    self.store.update_agent(agent_id, status='stopped')
+                raise RuntimeError(
+                    f"No container found for agent {agent_id}. "
+                    "The agent may have exited."
+                )
+
+            # Use ContainerAgentProcess to attach
+            process = ContainerAgentProcess(agent_id, agent['working_dir'], self.store)
+            process.container_name = container_name
+            process.attach_interactive()
+        else:
+            # Attach to tmux session
+            session_name = f"agent-{agent_id}"
+            result = subprocess.run(
+                ['tmux', 'has-session', '-t', session_name],
+                capture_output=True,
+                check=False
             )
 
-        # Attach directly via tmux (works across sessions)
-        print(f"Attaching to agent {agent_id}...")
-        print("Press Ctrl+B then D to detach from the session.")
-        print("-" * 60)
+            if result.returncode != 0:
+                # Update status if process is not running
+                if agent['status'] == 'running':
+                    self.store.update_agent(agent_id, status='stopped')
+                raise RuntimeError(
+                    f"No tmux session found for agent {agent_id}. "
+                    "The agent may have exited or was not started in interactive mode."
+                )
 
-        try:
-            subprocess.run(
-                ['tmux', 'attach-session', '-t', session_name],
-                check=True
-            )
-        except subprocess.CalledProcessError as e:
-            raise RuntimeError(f"Failed to attach to tmux session: {e}")
-        except KeyboardInterrupt:
-            print("\n" + "-" * 60)
-            print("Detached from agent.")
+            # Attach directly via tmux (works across sessions)
+            print(f"Attaching to agent {agent_id}...")
+            print("Press Ctrl+B then D to detach from the session.")
+            print("-" * 60)
+
+            try:
+                subprocess.run(
+                    ['tmux', 'attach-session', '-t', session_name],
+                    check=True
+                )
+            except subprocess.CalledProcessError as e:
+                raise RuntimeError(f"Failed to attach to tmux session: {e}")
+            except KeyboardInterrupt:
+                print("\n" + "-" * 60)
+                print("Detached from agent.")
 
     def list_agents(self, status: Optional[str] = None) -> list[Dict]:
         """List all agents with their information.
@@ -201,17 +237,27 @@ class AgentManager:
         if not agent:
             raise ValueError(f"Agent not found: {agent_id}")
 
-        # Kill the tmux session if it exists
-        session_name = f"agent-{agent_id}"
-        subprocess.run(
-            ['tmux', 'kill-session', '-t', session_name],
-            capture_output=True,
-            check=False
-        )
+        is_container = agent.get('container_mode', 0) == 1
 
-        # Try to terminate the process if it's still running
-        if agent['pid'] and utils.is_process_running(agent['pid']):
-            utils.terminate_process(agent['pid'])
+        if is_container:
+            # Stop and remove container
+            container_name = f"agent-{agent_id}"
+            if docker_utils.container_exists(container_name):
+                print(f"Stopping container {container_name}...")
+                docker_utils.stop_container(container_name)
+                docker_utils.remove_container(container_name, force=True)
+        else:
+            # Kill the tmux session if it exists
+            session_name = f"agent-{agent_id}"
+            subprocess.run(
+                ['tmux', 'kill-session', '-t', session_name],
+                capture_output=True,
+                check=False
+            )
+
+            # Try to terminate the process if it's still running
+            if agent['pid'] and utils.is_process_running(agent['pid']):
+                utils.terminate_process(agent['pid'])
 
         # Remove from active processes
         self.active_processes.pop(agent_id, None)
@@ -246,6 +292,15 @@ class AgentManager:
         if not agent:
             raise ValueError(f"Agent not found: {agent_id}")
 
+        is_container = agent.get('container_mode', 0) == 1
+
+        # Stop and remove container if it exists
+        if is_container:
+            container_name = f"agent-{agent_id}"
+            if docker_utils.container_exists(container_name):
+                docker_utils.stop_container(container_name)
+                docker_utils.remove_container(container_name, force=True)
+
         # Remove working directory if it exists
         working_dir = Path(agent['working_dir'])
         if working_dir.exists():
@@ -268,8 +323,16 @@ class AgentManager:
 
         for agent in agents:
             agent_id = agent['id']
+            is_container = agent.get('container_mode', 0) == 1
 
             try:
+                # Stop and remove container if it exists
+                if is_container:
+                    container_name = f"agent-{agent_id}"
+                    if docker_utils.container_exists(container_name):
+                        docker_utils.stop_container(container_name)
+                        docker_utils.remove_container(container_name, force=True)
+
                 # Remove working directory
                 working_dir = Path(agent['working_dir'])
                 if working_dir.exists():

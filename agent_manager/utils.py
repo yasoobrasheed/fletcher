@@ -177,3 +177,30 @@ def validate_repo_url(repo_url: str) -> bool:
     # Basic validation for git URLs
     valid_prefixes = ('http://', 'https://', 'git@', 'git://')
     return any(repo_url.startswith(prefix) for prefix in valid_prefixes)
+
+
+def check_docker_available() -> bool:
+    """Check if Docker is installed and available.
+
+    Returns:
+        True if Docker is available, False otherwise
+    """
+    return shutil.which('docker') is not None
+
+
+def check_docker_running() -> bool:
+    """Check if Docker daemon is running.
+
+    Returns:
+        True if Docker daemon is running, False otherwise
+    """
+    try:
+        result = subprocess.run(
+            ['docker', 'info'],
+            capture_output=True,
+            check=False,
+            timeout=5
+        )
+        return result.returncode == 0
+    except Exception:
+        return False

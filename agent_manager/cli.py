@@ -22,7 +22,9 @@ def cli():
 @click.argument('repo_url')
 @click.option('--skip-permissions', is_flag=True,
               help='Skip Claude permission prompts (USE WITH CAUTION - only in sandboxed environments)')
-def spawn(repo_url: str, skip_permissions: bool):
+@click.option('--container', is_flag=True,
+              help='Run agent in isolated Docker container (no network access, auto-remove)')
+def spawn(repo_url: str, skip_permissions: bool, container: bool):
     """Spawn a new agent with a fresh repository clone in interactive mode.
 
     REPO_URL: Git repository URL (https or git)
@@ -30,6 +32,7 @@ def spawn(repo_url: str, skip_permissions: bool):
     Examples:
         am spawn https://github.com/user/repo
         am spawn https://github.com/user/repo --skip-permissions
+        am spawn https://github.com/user/repo --container
     """
     # Validate Claude CLI availability
     if not utils.check_claude_cli():
@@ -37,12 +40,32 @@ def spawn(repo_url: str, skip_permissions: bool):
         click.echo("Please install Claude Code first: https://github.com/anthropics/claude-code")
         sys.exit(1)
 
+    # Validate Docker if container flag is used
+    if container:
+        if not utils.check_docker_available():
+            click.echo(click.style("Error: Docker not found in PATH.", fg='red'))
+            click.echo("Please install Docker first:")
+            click.echo("  macOS: https://docs.docker.com/desktop/install/mac-install/")
+            click.echo("  Linux: https://docs.docker.com/engine/install/")
+            sys.exit(1)
+
+        if not utils.check_docker_running():
+            click.echo(click.style("Error: Docker daemon is not running.", fg='red'))
+            click.echo("Please start Docker and try again.")
+            sys.exit(1)
+
     manager = AgentManager()
 
     try:
         click.echo(f"Spawning agent for repository: {repo_url}")
+        if container:
+            click.echo(click.style("Using isolated Docker container (no network access)", fg='yellow'))
 
-        agent_id = manager.spawn_agent(repo_url=repo_url, skip_permissions=skip_permissions)
+        agent_id = manager.spawn_agent(
+            repo_url=repo_url,
+            skip_permissions=skip_permissions,
+            use_container=container
+        )
 
         click.echo(click.style(f"\nAgent spawned successfully!", fg='green'))
         click.echo(f"Agent ID: {agent_id}")
@@ -279,6 +302,73 @@ def clean(status: Optional[str], clean_all: bool):
         else:
             filter_msg = "any" if clean_all else status
             click.echo(f"No {filter_msg} agents to clean.")
+
+    except Exception as e:
+        click.echo(click.style(f"Error: {e}", fg='red'))
+        sys.exit(1)
+
+
+@cli.command()
+@click.option('--containers', is_flag=True,
+              help='Clean up orphaned agent containers')
+@click.option('--images', is_flag=True,
+              help='Remove agent Docker images')
+@click.option('--all', '-a', 'clean_all', is_flag=True,
+              help='Clean both containers and images')
+@click.confirmation_option(prompt='Are you sure you want to clean Docker resources?')
+def docker_clean(containers: bool, images: bool, clean_all: bool):
+    """Clean up Docker resources used by agents.
+
+    Examples:
+        am docker-clean --containers    # Remove orphaned agent containers
+        am docker-clean --images        # Remove agent images
+        am docker-clean --all           # Clean everything
+    """
+    from . import docker_utils
+
+    if not utils.check_docker_available():
+        click.echo(click.style("Error: Docker not found.", fg='red'))
+        sys.exit(1)
+
+    if not utils.check_docker_running():
+        click.echo(click.style("Error: Docker daemon is not running.", fg='red'))
+        sys.exit(1)
+
+    try:
+        cleaned_containers = 0
+        cleaned_images = 0
+
+        # Clean containers
+        if containers or clean_all:
+            click.echo("Cleaning up agent containers...")
+            agent_containers = docker_utils.list_containers(
+                all_containers=True,
+                filter_name='agent-'
+            )
+            for container in agent_containers:
+                if docker_utils.remove_container(container, force=True):
+                    cleaned_containers += 1
+                    click.echo(f"  Removed container: {container}")
+
+        # Clean images
+        if images or clean_all:
+            click.echo("Cleaning up agent images...")
+            if docker_utils.remove_image('claude-agent:latest', force=True):
+                cleaned_images += 1
+                click.echo("  Removed image: claude-agent:latest")
+
+            # Prune dangling images
+            docker_utils.prune_images()
+
+        # Summary
+        click.echo()
+        if cleaned_containers > 0:
+            click.echo(click.style(f"Cleaned {cleaned_containers} container(s).", fg='green'))
+        if cleaned_images > 0:
+            click.echo(click.style(f"Cleaned {cleaned_images} image(s).", fg='green'))
+
+        if cleaned_containers == 0 and cleaned_images == 0:
+            click.echo("No Docker resources to clean.")
 
     except Exception as e:
         click.echo(click.style(f"Error: {e}", fg='red'))
