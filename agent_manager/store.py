@@ -7,14 +7,8 @@ from typing import Optional, List, Dict, Any
 
 
 class AgentStore:
-    """SQLite-based storage for agent state and outputs."""
 
     def __init__(self, db_path: Optional[str] = None):
-        """Initialize the database connection.
-
-        Args:
-            db_path: Path to SQLite database. Defaults to ~/.agent-manager/agents.db
-        """
         if db_path is None:
             base_dir = Path.home() / ".agent-manager"
             base_dir.mkdir(parents=True, exist_ok=True)
@@ -26,10 +20,8 @@ class AgentStore:
         self._initialize_schema()
 
     def _initialize_schema(self):
-        """Create database tables if they don't exist."""
         cursor = self.conn.cursor()
 
-        # Agents table
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS agents (
                 id TEXT PRIMARY KEY,
@@ -43,15 +35,12 @@ class AgentStore:
             )
         """)
 
-        # Migration: Add container_mode column if it doesn't exist
         try:
             cursor.execute("SELECT container_mode FROM agents LIMIT 1")
         except sqlite3.OperationalError:
-            # Column doesn't exist, add it
             cursor.execute("ALTER TABLE agents ADD COLUMN container_mode INTEGER DEFAULT 0")
             self.conn.commit()
 
-        # Agent outputs table
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS agent_outputs (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -78,19 +67,6 @@ class AgentStore:
     def create_agent(self, agent_id: str, repo_url: str, working_dir: str,
                      pid: Optional[int] = None, status: str = "spawning",
                      container_mode: bool = False) -> Dict[str, Any]:
-        """Create a new agent record.
-
-        Args:
-            agent_id: Unique agent identifier
-            repo_url: Repository URL
-            working_dir: Working directory path
-            pid: Process ID (optional)
-            status: Agent status
-            container_mode: Whether agent runs in container mode
-
-        Returns:
-            Created agent record as dictionary
-        """
         cursor = self.conn.cursor()
         now = datetime.utcnow().isoformat()
 
@@ -103,28 +79,12 @@ class AgentStore:
         return self.get_agent(agent_id)
 
     def get_agent(self, agent_id: str) -> Optional[Dict[str, Any]]:
-        """Retrieve an agent by ID.
-
-        Args:
-            agent_id: Agent identifier
-
-        Returns:
-            Agent record as dictionary or None if not found
-        """
         cursor = self.conn.cursor()
         cursor.execute("SELECT * FROM agents WHERE id = ?", (agent_id,))
         row = cursor.fetchone()
         return dict(row) if row else None
 
     def list_agents(self, status: Optional[str] = None) -> List[Dict[str, Any]]:
-        """List all agents, optionally filtered by status.
-
-        Args:
-            status: Filter by status (optional)
-
-        Returns:
-            List of agent records
-        """
         cursor = self.conn.cursor()
 
         if status:
@@ -135,22 +95,11 @@ class AgentStore:
         return [dict(row) for row in cursor.fetchall()]
 
     def update_agent(self, agent_id: str, **kwargs) -> bool:
-        """Update agent fields.
-
-        Args:
-            agent_id: Agent identifier
-            **kwargs: Fields to update (pid, status, etc.)
-
-        Returns:
-            True if updated, False if agent not found
-        """
         if not kwargs:
             return False
 
-        # Add updated_at timestamp
         kwargs['updated_at'] = datetime.utcnow().isoformat()
 
-        # Build UPDATE query
         fields = ', '.join(f"{k} = ?" for k in kwargs.keys())
         values = list(kwargs.values()) + [agent_id]
 
@@ -161,27 +110,12 @@ class AgentStore:
         return cursor.rowcount > 0
 
     def delete_agent(self, agent_id: str) -> bool:
-        """Delete an agent record.
-
-        Args:
-            agent_id: Agent identifier
-
-        Returns:
-            True if deleted, False if not found
-        """
         cursor = self.conn.cursor()
         cursor.execute("DELETE FROM agents WHERE id = ?", (agent_id,))
         self.conn.commit()
         return cursor.rowcount > 0
 
     def add_output(self, agent_id: str, output_type: str, content: str):
-        """Add output from an agent.
-
-        Args:
-            agent_id: Agent identifier
-            output_type: Type of output (stdout, stderr)
-            content: Output content
-        """
         cursor = self.conn.cursor()
         timestamp = datetime.utcnow().isoformat()
 
@@ -193,15 +127,6 @@ class AgentStore:
         self.conn.commit()
 
     def get_outputs(self, agent_id: str, limit: Optional[int] = None) -> List[Dict[str, Any]]:
-        """Retrieve outputs for an agent.
-
-        Args:
-            agent_id: Agent identifier
-            limit: Maximum number of outputs to return
-
-        Returns:
-            List of output records
-        """
         cursor = self.conn.cursor()
 
         query = """
@@ -217,5 +142,4 @@ class AgentStore:
         return [dict(row) for row in cursor.fetchall()]
 
     def close(self):
-        """Close database connection."""
         self.conn.close()

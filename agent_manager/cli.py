@@ -20,51 +20,34 @@ def cli():
 
 @cli.command()
 @click.argument('repo_url')
-@click.option('--skip-permissions', is_flag=True,
-              help='Skip Claude permission prompts (USE WITH CAUTION - only in sandboxed environments)')
-@click.option('--container', is_flag=True,
-              help='Run agent in isolated Docker container (no network access, auto-remove)')
-def spawn(repo_url: str, skip_permissions: bool, container: bool):
-    """Spawn a new agent with a fresh repository clone in interactive mode.
-
-    REPO_URL: Git repository URL (https or git)
-
-    Examples:
-        am spawn https://github.com/user/repo
-        am spawn https://github.com/user/repo --skip-permissions
-        am spawn https://github.com/user/repo --container
-    """
-    # Validate Claude CLI availability
+def spawn(repo_url: str):
     if not utils.check_claude_cli():
         click.echo(click.style("Error: Claude Code CLI not found in PATH.", fg='red'))
         click.echo("Please install Claude Code first: https://github.com/anthropics/claude-code")
         sys.exit(1)
 
-    # Validate Docker if container flag is used
-    if container:
-        if not utils.check_docker_available():
-            click.echo(click.style("Error: Docker not found in PATH.", fg='red'))
-            click.echo("Please install Docker first:")
-            click.echo("  macOS: https://docs.docker.com/desktop/install/mac-install/")
-            click.echo("  Linux: https://docs.docker.com/engine/install/")
-            sys.exit(1)
+    if not utils.check_docker_available():
+        click.echo(click.style("Error: Docker not found in PATH.", fg='red'))
+        click.echo("Please install Docker first:")
+        click.echo("  macOS: https://docs.docker.com/desktop/install/mac-install/")
+        click.echo("  Linux: https://docs.docker.com/engine/install/")
+        sys.exit(1)
 
-        if not utils.check_docker_running():
-            click.echo(click.style("Error: Docker daemon is not running.", fg='red'))
-            click.echo("Please start Docker and try again.")
-            sys.exit(1)
+    if not utils.check_docker_running():
+        click.echo(click.style("Error: Docker daemon is not running.", fg='red'))
+        click.echo("Please start Docker and try again.")
+        sys.exit(1)
 
     manager = AgentManager()
 
     try:
         click.echo(f"Spawning agent for repository: {repo_url}")
-        if container:
-            click.echo(click.style("Using isolated Docker container (no network access)", fg='yellow'))
+        click.echo(click.style("Using isolated Docker container with network access", fg='yellow'))
 
         agent_id = manager.spawn_agent(
             repo_url=repo_url,
-            skip_permissions=skip_permissions,
-            use_container=container
+            skip_permissions=True,
+            use_container=True
         )
 
         click.echo(click.style(f"\nAgent spawned successfully!", fg='green'))
@@ -83,12 +66,6 @@ def spawn(repo_url: str, skip_permissions: bool, container: bool):
 @click.option('--status', '-s', type=click.Choice(['spawning', 'running', 'stopped', 'error']),
               help='Filter by status')
 def list(status: Optional[str]):
-    """List all agents.
-
-    Examples:
-        am list
-        am list --status running
-    """
     manager = AgentManager()
 
     try:
@@ -101,20 +78,16 @@ def list(status: Optional[str]):
                 click.echo("No agents found. Use 'am spawn' to create one.")
             return
 
-        # Format as table
         headers = ['ID', 'Status', 'Repository', 'PID', 'Created']
         rows = []
 
         for agent in agents:
-            # Truncate repo URL for display
             repo = agent['repo_url']
             if len(repo) > 50:
                 repo = '...' + repo[-47:]
 
-            # Format created timestamp
-            created = agent['created_at'].split('T')[0]  # Just the date
+            created = agent['created_at'].split('T')[0]
 
-            # Status with color
             status_display = agent['status']
             if agent['status'] == 'running':
                 status_display = click.style(status_display, fg='green')
@@ -144,26 +117,12 @@ def list(status: Optional[str]):
 @click.option('--all', '-a', 'attach_all', is_flag=True,
               help='Attach to all running agents in split view')
 def attach(agent_id: Optional[str], attach_all: bool):
-    """Attach to agent's interactive session(s) in tmux.
-
-    AGENT_ID: Agent identifier from 'list' command (optional with --all)
-
-    Press Ctrl+B then D to detach from the session.
-    Press Ctrl+B then arrow keys to navigate between panes (with --all).
-    Press Ctrl+B then Z to zoom/unzoom a pane (with --all).
-
-    Examples:
-        am attach abc123
-        am attach --all
-    """
     manager = AgentManager()
 
     try:
         if attach_all:
-            # Attach to all running agents in split view
             manager.attach_all_agents()
         elif agent_id:
-            # Attach to specific agent
             click.echo(f"Attaching to agent {agent_id}...")
             manager.attach_agent(agent_id)
         else:
@@ -184,13 +143,6 @@ def attach(agent_id: Optional[str], attach_all: bool):
 @cli.command()
 @click.argument('agent_id')
 def info(agent_id: str):
-    """Show detailed information about an agent.
-
-    AGENT_ID: Agent identifier from 'list' command
-
-    Examples:
-        am info abc123
-    """
     manager = AgentManager()
 
     try:
@@ -200,7 +152,6 @@ def info(agent_id: str):
             click.echo(click.style(f"Agent not found: {agent_id}", fg='red'))
             sys.exit(1)
 
-        # Display agent information
         click.echo(f"Agent ID: {agent['id']}")
         click.echo(f"Status: {agent['status']}")
         click.echo(f"Repository: {agent['repo_url']}")
@@ -219,17 +170,6 @@ def info(agent_id: str):
 @click.option('--keep-workdir', '-k', is_flag=True,
               help='Keep the working directory (only stop the process)')
 def stop(agent_id: str, keep_workdir: bool):
-    """Stop a running agent and remove its working directory.
-
-    AGENT_ID: Agent identifier from 'list' command
-
-    By default, this will stop the agent's process and delete its working directory.
-    Use --keep-workdir to preserve the directory.
-
-    Examples:
-        am stop abc123
-        am stop abc123 --keep-workdir
-    """
     manager = AgentManager()
 
     try:
@@ -252,13 +192,6 @@ def stop(agent_id: str, keep_workdir: bool):
 @click.argument('agent_id')
 @click.confirmation_option(prompt='Are you sure you want to delete this agent?')
 def delete(agent_id: str):
-    """Delete a specific agent and its working directory.
-
-    AGENT_ID: Agent identifier from 'list' command
-
-    Examples:
-        am delete abc123
-    """
     manager = AgentManager()
 
     try:
@@ -280,15 +213,6 @@ def delete(agent_id: str):
               help='Clean all agents regardless of status')
 @click.confirmation_option(prompt='Are you sure you want to clean agents?')
 def clean(status: Optional[str], clean_all: bool):
-    """Remove agents and their working directories.
-
-    By default, only stopped agents are removed.
-
-    Examples:
-        am clean
-        am clean --status error
-        am clean --all
-    """
     manager = AgentManager()
 
     try:
@@ -317,13 +241,6 @@ def clean(status: Optional[str], clean_all: bool):
               help='Clean both containers and images')
 @click.confirmation_option(prompt='Are you sure you want to clean Docker resources?')
 def docker_clean(containers: bool, images: bool, clean_all: bool):
-    """Clean up Docker resources used by agents.
-
-    Examples:
-        am docker-clean --containers    # Remove orphaned agent containers
-        am docker-clean --images        # Remove agent images
-        am docker-clean --all           # Clean everything
-    """
     from . import docker_utils
 
     if not utils.check_docker_available():
@@ -338,7 +255,6 @@ def docker_clean(containers: bool, images: bool, clean_all: bool):
         cleaned_containers = 0
         cleaned_images = 0
 
-        # Clean containers
         if containers or clean_all:
             click.echo("Cleaning up agent containers...")
             agent_containers = docker_utils.list_containers(
@@ -350,17 +266,14 @@ def docker_clean(containers: bool, images: bool, clean_all: bool):
                     cleaned_containers += 1
                     click.echo(f"  Removed container: {container}")
 
-        # Clean images
         if images or clean_all:
             click.echo("Cleaning up agent images...")
             if docker_utils.remove_image('claude-agent:latest', force=True):
                 cleaned_images += 1
                 click.echo("  Removed image: claude-agent:latest")
 
-            # Prune dangling images
             docker_utils.prune_images()
 
-        # Summary
         click.echo()
         if cleaned_containers > 0:
             click.echo(click.style(f"Cleaned {cleaned_containers} container(s).", fg='green'))
