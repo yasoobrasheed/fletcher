@@ -1,9 +1,9 @@
 """Container-based process management for Claude Code CLI agents."""
-import subprocess
 import time
 from typing import Optional
 from .store import AgentStore
 from . import docker_utils
+from . import utils
 
 
 class ContainerAgentProcess:
@@ -57,24 +57,12 @@ class ContainerAgentProcess:
 
     def _start_claude_with_skip_permissions(self):
         try:
-            script = """#!/bin/bash
-(echo "2" | claude --dangerously-skip-permissions) &
-"""
-            subprocess.run(
-                ['docker', 'exec', self.container_id, 'bash', '-c',
-                 f'echo {repr(script)} > /tmp/start_claude.sh && chmod +x /tmp/start_claude.sh'],
-                check=True,
-                capture_output=True
-            )
-
             docker_utils.exec_in_container(
                 self.container_id,
-                ['/tmp/start_claude.sh'],
+                ['bash', '-c', 'echo "2" | claude --dangerously-skip-permissions'],
                 detach=True
             )
-
             time.sleep(1.5)
-
         except Exception as e:
             raise RuntimeError(f"Failed to start Claude with skip permissions: {e}")
 
