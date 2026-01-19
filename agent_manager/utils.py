@@ -2,9 +2,14 @@
 import os
 import shutil
 import subprocess
+import uuid
 from pathlib import Path
 from typing import Optional
 import git
+
+
+def generate_agent_id() -> str:
+    return str(uuid.uuid4())[:8]
 
 
 def check_claude_cli() -> bool:
@@ -86,9 +91,10 @@ def create_and_checkout_branch(repo_path: str, branch_name: str) -> bool:
         raise e
 
 
-def validate_repo_url(repo_url: str) -> bool:
+def validate_repo_url(repo_url: str) -> None:
     valid_prefixes = ('http://', 'https://', 'git@', 'git://')
-    return any(repo_url.startswith(prefix) for prefix in valid_prefixes)
+    if not any(repo_url.startswith(prefix) for prefix in valid_prefixes):
+        raise ValueError(f"Invalid repository URL: {repo_url}")
 
 
 def check_docker_available() -> bool:
@@ -106,3 +112,23 @@ def check_docker_running() -> bool:
         return result.returncode == 0
     except Exception:
         return False
+
+
+def validate_claude_cli():
+    if not check_claude_cli():
+        raise RuntimeError(
+            "Claude Code CLI not found in PATH. "
+            "Please install Claude Code first: https://github.com/anthropics/claude-code"
+        )
+
+
+def validate_docker():
+    if not check_docker_available():
+        raise RuntimeError(
+            "Docker not found. Please install Docker:\n"
+            "  macOS: https://docs.docker.com/desktop/install/mac-install/\n"
+            "  Linux: https://docs.docker.com/engine/install/"
+        )
+
+    if not check_docker_running():
+        raise RuntimeError("Docker daemon is not running. Please start Docker.")

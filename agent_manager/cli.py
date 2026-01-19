@@ -21,42 +21,23 @@ def cli():
 @cli.command()
 @click.argument('repo_url')
 def spawn(repo_url: str):
-    if not utils.check_claude_cli():
-        click.echo(click.style("Error: Claude Code CLI not found in PATH.", fg='red'))
-        click.echo("Please install Claude Code first: https://github.com/anthropics/claude-code")
-        sys.exit(1)
-
-    if not utils.check_docker_available():
-        click.echo(click.style("Error: Docker not found in PATH.", fg='red'))
-        click.echo("Please install Docker first:")
-        click.echo("  macOS: https://docs.docker.com/desktop/install/mac-install/")
-        click.echo("  Linux: https://docs.docker.com/engine/install/")
-        sys.exit(1)
-
-    if not utils.check_docker_running():
-        click.echo(click.style("Error: Docker daemon is not running.", fg='red'))
-        click.echo("Please start Docker and try again.")
-        sys.exit(1)
-
     manager = AgentManager()
 
     try:
+        utils.validate_claude_cli()
+        utils.validate_docker()
+        utils.validate_repo_url(repo_url)
+
         click.echo(f"Spawning agent for repository: {repo_url}")
         click.echo(click.style("Using isolated Docker container with network access", fg='yellow'))
 
-        agent_id = manager.spawn_agent(
-            repo_url=repo_url,
-            skip_permissions=True,
-            use_container=True
-        )
-
+        agent_id = manager.spawn_agent(repo_url)
         click.echo(click.style(f"\nAgent spawned successfully!", fg='green'))
         click.echo(f"Agent ID: {agent_id}")
 
         agent = manager.get_agent(agent_id)
         click.echo(f"Working directory: {agent['working_dir']}")
         click.echo(f"\nUse 'am attach {agent_id}' to connect to the agent.")
-
     except Exception as e:
         click.echo(click.style(f"Error: {e}", fg='red'))
         sys.exit(1)
@@ -243,15 +224,8 @@ def clean(status: Optional[str], clean_all: bool):
 def docker_clean(containers: bool, images: bool, clean_all: bool):
     from . import docker_utils
 
-    if not utils.check_docker_available():
-        click.echo(click.style("Error: Docker not found.", fg='red'))
-        sys.exit(1)
-
-    if not utils.check_docker_running():
-        click.echo(click.style("Error: Docker daemon is not running.", fg='red'))
-        sys.exit(1)
-
     try:
+        utils.validate_docker()
         cleaned_containers = 0
         cleaned_images = 0
 

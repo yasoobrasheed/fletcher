@@ -1,5 +1,4 @@
 """Agent lifecycle management."""
-import uuid
 import shutil
 from typing import Optional, Dict
 from pathlib import Path
@@ -20,19 +19,8 @@ class AgentManager:
     def spawn_agent(
         self,
         repo_url: str,
-        skip_permissions: bool = False,
-        use_container: bool = False
     ) -> str:
-        if not utils.check_claude_cli():
-            raise RuntimeError(
-                "Claude Code CLI not found in PATH. "
-                "Please install Claude Code first: https://github.com/anthropics/claude-code"
-            )
-
-        if not utils.validate_repo_url(repo_url):
-            raise ValueError(f"Invalid repository URL: {repo_url}")
-
-        agent_id = str(uuid.uuid4())[:8]
+        agent_id = utils.generate_agent_id()
 
         working_dir = utils.get_agent_working_dir(agent_id)
         working_dir.mkdir(parents=True, exist_ok=True)
@@ -43,7 +31,7 @@ class AgentManager:
                 repo_url=repo_url,
                 working_dir=str(working_dir),
                 status="spawning",
-                container_mode=use_container
+                container_mode=True
             )
 
             print(f"Cloning repository to {working_dir}...")
@@ -53,16 +41,9 @@ class AgentManager:
             print(f"Creating branch: {branch_name}")
             utils.create_and_checkout_branch(str(working_dir), branch_name)
 
-            if use_container:
-                process = ContainerAgentProcess(agent_id, str(working_dir), self.store)
-                container_id = process.spawn_interactive()
-                status = "running"
-                self.store.update_agent(agent_id, pid=container_id, status=status)
-            else:
-                process = AgentProcess(agent_id, str(working_dir), self.store)
-                pid = process.spawn_interactive(skip_permissions=skip_permissions)
-                status = "running"
-                self.store.update_agent(agent_id, pid=pid, status=status)
+            process = ContainerAgentProcess(agent_id, str(working_dir), self.store)
+            container_id = process.spawn_interactive()
+            self.store.update_agent(agent_id, pid=container_id, status="running")
 
             self.active_processes[agent_id] = process
 

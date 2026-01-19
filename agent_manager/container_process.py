@@ -16,18 +16,6 @@ class ContainerAgentProcess:
         self.container_id: Optional[str] = None
 
     def spawn_interactive(self) -> str:
-        if not docker_utils.check_docker_available():
-            raise RuntimeError(
-                "Docker not found. Please install Docker:\n"
-                "  macOS: https://docs.docker.com/desktop/install/mac-install/\n"
-                "  Linux: https://docs.docker.com/engine/install/"
-            )
-
-        if not docker_utils.check_docker_running():
-            raise RuntimeError(
-                "Docker daemon is not running. Please start Docker."
-            )
-
         if not docker_utils.image_exists():
             print("Building agent Docker image (this may take a few minutes)...")
             if not docker_utils.build_agent_image():
