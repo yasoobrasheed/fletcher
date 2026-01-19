@@ -29,17 +29,10 @@ class AgentStore:
                 working_dir TEXT NOT NULL,
                 pid INTEGER,
                 status TEXT NOT NULL,
-                container_mode INTEGER DEFAULT 0,
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL
             )
         """)
-
-        try:
-            cursor.execute("SELECT container_mode FROM agents LIMIT 1")
-        except sqlite3.OperationalError:
-            cursor.execute("ALTER TABLE agents ADD COLUMN container_mode INTEGER DEFAULT 0")
-            self.conn.commit()
 
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS agent_outputs (
@@ -65,15 +58,14 @@ class AgentStore:
         self.conn.commit()
 
     def create_agent(self, agent_id: str, repo_url: str, working_dir: str,
-                     pid: Optional[int] = None, status: str = "spawning",
-                     container_mode: bool = False) -> Dict[str, Any]:
+                     pid: Optional[int] = None, status: str = "spawning") -> Dict[str, Any]:
         cursor = self.conn.cursor()
         now = datetime.utcnow().isoformat()
 
         cursor.execute("""
-            INSERT INTO agents (id, repo_url, working_dir, pid, status, container_mode, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        """, (agent_id, repo_url, working_dir, pid, status, 1 if container_mode else 0, now, now))
+            INSERT INTO agents (id, repo_url, working_dir, pid, status, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        """, (agent_id, repo_url, working_dir, pid, status, now, now))
 
         self.conn.commit()
         return self.get_agent(agent_id)
