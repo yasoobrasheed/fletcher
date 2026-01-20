@@ -27,12 +27,14 @@ class ContainerAgentProcess:
             if docker_utils.container_exists(self.container_name):
                 docker_utils.remove_container(self.container_name, force=True)
 
+            env_vars = self._load_env_vars()
             print(f"Creating isolated container for agent {self.agent_id}...")
             self.container_id = docker_utils.create_container(
                 container_name=self.container_name,
                 working_dir=self.working_dir,
                 network_mode="bridge",
-                auto_remove=True
+                auto_remove=True,
+                env_vars=env_vars,
             )
             print(f"Container created: {self.container_id[:12]}")
 
@@ -91,3 +93,24 @@ class ContainerAgentProcess:
 
         info = docker_utils.get_container_info(container_ref)
         return info.get('State', {}).get('Running', False) if info else False
+
+    def _load_env_vars(self) -> dict:
+        """Load environment variables from .env file and environment."""
+        # Load .env file from the project root (two levels up from this file)
+        project_root = Path(__file__).parent.parent
+        env_file = project_root / '.env'
+
+        if env_file.exists():
+            load_dotenv(env_file)
+
+        env_vars = {}
+
+        # Get ANTHROPIC_API_KEY from environment
+        api_key = os.getenv('ANTHROPIC_API_KEY')
+        if api_key:
+            env_vars['ANTHROPIC_API_KEY'] = api_key
+        else:
+            print("Warning: ANTHROPIC_API_KEY not found in environment or .env file")
+            print(f"Please create a .env file at {env_file} with your API key")
+
+        return env_vars

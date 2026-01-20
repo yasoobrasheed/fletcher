@@ -43,6 +43,9 @@ htmlcov/
 .agent-manager/
 .agents/
 
+# Environment variables
+.env
+
 # OS
 .DS_Store
 Thumbs.db
