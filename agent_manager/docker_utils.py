@@ -56,7 +56,8 @@ def create_container(
     image_name: str = "claude-agent:latest",
     network_mode: str = "none",
     auto_remove: bool = True,
-    additional_args: Optional[List[str]] = None
+    additional_args: Optional[List[str]] = None,
+    env_vars: Optional[Dict[str, str]] = None,
 ) -> str:
     try:
         cmd = [
@@ -71,6 +72,10 @@ def create_container(
 
         if auto_remove:
             cmd.append('--rm')
+
+        if env_vars:
+            for key, value in env_vars.items():
+                cmd.extend(['-e', f'{key}={value}'])
 
         cmd.extend([
             '--memory', '2g',

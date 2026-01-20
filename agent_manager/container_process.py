@@ -1,6 +1,9 @@
 """Container-based process management for Claude Code CLI agents."""
+import os
 import time
 from typing import Optional
+from pathlib import Path
+from dotenv import load_dotenv
 from .store import AgentStore
 from . import docker_utils
 from . import utils
@@ -101,7 +104,10 @@ class ContainerAgentProcess:
         env_file = project_root / '.env'
 
         if env_file.exists():
-            load_dotenv(env_file)
+            try:
+                load_dotenv(env_file)
+            except:
+                pass  # dotenv not installed, fall back to os.getenv
 
         env_vars = {}
 
