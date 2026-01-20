@@ -194,9 +194,11 @@ def delete(agent_id: str):
               help='Clean all agents regardless of status')
 @click.confirmation_option(prompt='Are you sure you want to clean agents?')
 def clean(status: Optional[str], clean_all: bool):
+    from . import docker_utils
     manager = AgentManager()
 
     try:
+        # Clean agent records
         if clean_all:
             count = manager.clean_agents(status=None)
         else:
@@ -208,54 +210,28 @@ def clean(status: Optional[str], clean_all: bool):
             filter_msg = "any" if clean_all else status
             click.echo(f"No {filter_msg} agents to clean.")
 
-    except Exception as e:
-        click.echo(click.style(f"Error: {e}", fg='red'))
-        sys.exit(1)
-
-
-@cli.command()
-@click.option('--containers', is_flag=True,
-              help='Clean up orphaned agent containers')
-@click.option('--images', is_flag=True,
-              help='Remove agent Docker images')
-@click.option('--all', '-a', 'clean_all', is_flag=True,
-              help='Clean both containers and images')
-@click.confirmation_option(prompt='Are you sure you want to clean Docker resources?')
-def docker_clean(containers: bool, images: bool, clean_all: bool):
-    from . import docker_utils
-
-    try:
+        # Clean Docker resources
+        click.echo("\nCleaning Docker resources...")
         utils.validate_docker()
+
         cleaned_containers = 0
-        cleaned_images = 0
+        agent_containers = docker_utils.list_containers(
+            all_containers=True,
+            filter_name='agent-'
+        )
+        for container in agent_containers:
+            if docker_utils.remove_container(container, force=True):
+                cleaned_containers += 1
+                click.echo(f"  Removed container: {container}")
 
-        if containers or clean_all:
-            click.echo("Cleaning up agent containers...")
-            agent_containers = docker_utils.list_containers(
-                all_containers=True,
-                filter_name='agent-'
-            )
-            for container in agent_containers:
-                if docker_utils.remove_container(container, force=True):
-                    cleaned_containers += 1
-                    click.echo(f"  Removed container: {container}")
+        # Prune dangling images
+        docker_utils.prune_images()
+        click.echo("  Pruned dangling images")
 
-        if images or clean_all:
-            click.echo("Cleaning up agent images...")
-            if docker_utils.remove_image('claude-agent:latest', force=True):
-                cleaned_images += 1
-                click.echo("  Removed image: claude-agent:latest")
-
-            docker_utils.prune_images()
-
-        click.echo()
         if cleaned_containers > 0:
             click.echo(click.style(f"Cleaned {cleaned_containers} container(s).", fg='green'))
-        if cleaned_images > 0:
-            click.echo(click.style(f"Cleaned {cleaned_images} image(s).", fg='green'))
-
-        if cleaned_containers == 0 and cleaned_images == 0:
-            click.echo("No Docker resources to clean.")
+        else:
+            click.echo("No orphaned containers to clean.")
 
     except Exception as e:
         click.echo(click.style(f"Error: {e}", fg='red'))

@@ -20,12 +20,12 @@ class ContainerAgentProcess:
         self.container_id: Optional[str] = None
 
     def spawn_interactive(self) -> str:
-        if docker_utils.image_exists():
-            docker_utils.remove_image('claude-agent:latest', force=True)
-
-        print("Building agent Docker image (this may take a few minutes)...")
-        if not docker_utils.build_agent_image():
-            raise RuntimeError("Failed to build agent Docker image")
+        if not docker_utils.image_exists():
+            print("Building agent Docker image (this may take a few minutes)...")
+            if not docker_utils.build_agent_image():
+                raise RuntimeError("Failed to build agent Docker image")
+        else:
+            print("Using existing agent Docker image...")
 
         try:
             if docker_utils.container_exists(self.container_name):
