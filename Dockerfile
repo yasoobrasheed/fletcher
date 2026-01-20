@@ -11,6 +11,7 @@ RUN apt-get update && apt-get install -y \
     ca-certificates \
     python3 \
     python3-pip \
+    tmux \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Node.js 20.x from NodeSource
