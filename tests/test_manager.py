@@ -1,11 +1,11 @@
-"""Tests for agent manager."""
+"""Tests for Fletcher agent manager."""
 import pytest
 import tempfile
 import shutil
 from pathlib import Path
 
-from agent_manager.manager import AgentManager
-from agent_manager.store import AgentStore
+from fletcher.manager import AgentManager
+from fletcher.store import AgentStore
 
 
 @pytest.fixture

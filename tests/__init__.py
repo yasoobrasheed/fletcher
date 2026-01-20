@@ -1,1 +1,1 @@
-"""Tests for agent-manager."""
+"""Tests for Fletcher."""

@@ -1,4 +1,4 @@
-"""CLI interface for agent management."""
+"""Fletcher - Run Claude Code in isolated containers."""
 import click
 import sys
 from tabulate import tabulate
@@ -11,9 +11,9 @@ from . import utils
 @click.group()
 @click.version_option(version="0.1.0")
 def cli():
-    """Agent Manager - Manage Claude Code agents in isolated git clones.
+    """Fletcher - Run Claude Code in isolated containers while syncing with your IDE.
 
-    Each agent runs in its own fresh repository clone with full isolation.
+    Each agent runs in its own Docker container with a fresh git clone.
     """
     pass
 
@@ -37,7 +37,7 @@ def spawn(repo_url: str):
 
         agent = manager.get_agent(agent_id)
         click.echo(f"Working directory: {agent['working_dir']}")
-        click.echo(f"\nUse 'am attach {agent_id}' to connect to the agent.")
+        click.echo(f"\nUse 'fl attach {agent_id}' to connect to the agent.")
     except Exception as e:
         click.echo(click.style(f"Error: {e}", fg='red'))
         sys.exit(1)
@@ -56,7 +56,7 @@ def list(status: Optional[str]):
             if status:
                 click.echo(f"No agents found with status: {status}")
             else:
-                click.echo("No agents found. Use 'am spawn' to create one.")
+                click.echo("No agents found. Use 'fl spawn' to create one.")
             return
 
         headers = ['ID', 'Status', 'Repository', 'PID', 'Created']
@@ -105,6 +105,17 @@ def attach(agent_id: Optional[str], attach_all: bool):
             manager.attach_all_agents()
         elif agent_id:
             click.echo(f"Attaching to agent {agent_id}...")
+            from . import docker_utils
+            container_name = f"agent-{agent_id}"
+            # Always enable mouse mode in tmux for easier interaction
+            try:
+                docker_utils.exec_in_container(
+                    container_name,
+                    ['tmux', 'set-option', '-t', 'claude', 'mouse', 'on'],
+                    detach=False
+                )
+            except:
+                pass  # Silently fail if tmux command fails
             manager.attach_agent(agent_id)
         else:
             click.echo(click.style("Error: Must provide AGENT_ID or use --all flag", fg='red'))

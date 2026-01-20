@@ -3,13 +3,13 @@ requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "agent-manager"
+name = "fletcher"
 version = "0.1.0"
-description = "CLI tool for managing Claude Code agents in isolated git clones"
+description = "Run Claude Code in isolated containers while syncing with your IDE"
 readme = "README.md"
 requires-python = ">=3.8"
 authors = [
-    {name = "Agent Manager Team"}
+    {name = "Fletcher Team"}
 ]
 dependencies = [
     "click>=8.0",
@@ -19,7 +19,7 @@ dependencies = [
 ]
 
 [project.scripts]
-am = "agent_manager.cli:cli"
+fl = "fletcher.cli:cli"
 
 [project.optional-dependencies]
 dev = [
@@ -29,4 +29,4 @@ dev = [
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["agent_manager*"]
+include = ["fletcher*"]

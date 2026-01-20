@@ -39,8 +39,8 @@ ENV/
 .coverage
 htmlcov/
 
-# Agent Manager specific
-.agent-manager/
+# Fletcher specific
+.fletcher/
 .agents/
 
 # Environment variables
