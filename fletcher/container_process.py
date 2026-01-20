@@ -71,6 +71,16 @@ class ContainerAgentProcess:
                 detach=False
             )
 
+            # Configure gh CLI with the GitHub PAT if available
+            github_pat = os.getenv('GITHUB_PAT')
+            if github_pat:
+                print("Configuring GitHub CLI authentication...")
+                docker_utils.exec_in_container(
+                    self.container_id,
+                    ['bash', '-c', f'echo {github_pat} | gh auth login --with-token'],
+                    detach=False
+                )
+
             # Start Claude in a detached tmux session named 'claude'
             docker_utils.exec_in_container(
                 self.container_id,
@@ -147,5 +157,13 @@ class ContainerAgentProcess:
         else:
             print("Warning: ANTHROPIC_API_KEY not found in environment or .env file")
             print(f"Please create a .env file at {env_file} with your API key")
+
+        # Get GITHUB_PAT from environment
+        github_pat = os.getenv('GITHUB_PAT')
+        if github_pat:
+            env_vars['GITHUB_PAT'] = github_pat
+        else:
+            print("Warning: GITHUB_PAT not found in environment or .env file")
+            print(f"Please create a .env file at {env_file} with your GitHub PAT")
 
         return env_vars

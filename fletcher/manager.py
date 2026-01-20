@@ -35,7 +35,7 @@ class AgentManager:
             print(f"Cloning repository to {working_dir}...")
             utils.clone_repository(repo_url, str(working_dir))
 
-            branch_name = f"agent-dev/{agent_id}"
+            branch_name = f"fletcher/{agent_id}"
             print(f"Creating branch: {branch_name}")
             utils.create_and_checkout_branch(str(working_dir), branch_name)
 
