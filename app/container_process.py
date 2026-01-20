@@ -1,6 +1,7 @@
 """Container-based process management for Claude Code CLI agents."""
 import os
 import time
+import json
 from typing import Optional
 from pathlib import Path
 from dotenv import load_dotenv
@@ -19,12 +20,12 @@ class ContainerAgentProcess:
         self.container_id: Optional[str] = None
 
     def spawn_interactive(self) -> str:
-        if docker_utils.image_exists():
-            docker_utils.remove_image('claude-agent:latest', force=True)
-
-        print("Building agent Docker image (this may take a few minutes)...")
-        if not docker_utils.build_agent_image():
-            raise RuntimeError("Failed to build agent Docker image")
+        if not docker_utils.image_exists():
+            print("Building agent Docker image (this may take a few minutes)...")
+            if not docker_utils.build_agent_image():
+                raise RuntimeError("Failed to build agent Docker image")
+        else:
+            print("Using existing agent Docker image...")
 
         try:
             if docker_utils.container_exists(self.container_name):
@@ -41,6 +42,9 @@ class ContainerAgentProcess:
             )
             print(f"Container created: {self.container_id[:12]}")
 
+            # Give the container a moment to fully start
+            time.sleep(0.5)
+
             self._start_claude()
             return self.container_id
         except Exception as e:
@@ -50,12 +54,37 @@ class ContainerAgentProcess:
 
     def _start_claude(self):
         try:
+            # Global state file to skip onboarding
+            global_state_json = json.dumps({
+                "hasCompletedOnboarding": True,
+                "hasTrustDialogHooksAccepted": True,
+                "primaryApiKey": os.getenv('ANTHROPIC_API_KEY'),
+                "theme": "dark",
+                "autoUpdates": "true",
+                "bypassPermissionsModeAccepted": "true",
+            })
+
+            # Use /home/agent since container runs as non-root 'agent' user
             docker_utils.exec_in_container(
                 self.container_id,
-                ['bash', '-c', 'echo "2" | claude --dangerously-skip-permissions'],
-                detach=True
+                ['bash', '-c', f'echo \'{global_state_json}\' > /home/agent/.claude.json',],
+                detach=False
             )
-            time.sleep(1.5)
+
+            # Start Claude in a detached tmux session named 'claude'
+            docker_utils.exec_in_container(
+                self.container_id,
+                ['bash', '-c', 'tmux new-session -d -s claude claude --model claude-opus-4-5-20251101 --dangerously-skip-permissions'],
+                detach=False
+            )
+
+            # Send keypress '1' followed by Enter to the tmux session
+            print("Sending keypress 'Escape'...")
+            docker_utils.exec_in_container(
+                self.container_id,
+                ['bash', '-c', 'tmux send-keys -t claude C-\['],
+                detach=False
+            )
         except Exception as e:
             raise RuntimeError(f"Failed to start Claude: {e}")
 
@@ -70,10 +99,10 @@ class ContainerAgentProcess:
                 )
 
         print(f"Attaching to agent {self.agent_id} in container...")
-        print("Type 'exit' or press Ctrl+D to detach from the container.\n")
+        print("Press Ctrl+B then D to detach from the session.\n")
 
         try:
-            docker_utils.attach_to_container(self.container_name)
+            docker_utils.attach_to_claude_session(self.container_name)
         except RuntimeError as e:
             raise RuntimeError(f"Failed to attach to container: {e}")
         except KeyboardInterrupt:

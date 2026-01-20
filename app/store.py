@@ -10,7 +10,7 @@ class AgentStore:
 
     def __init__(self, db_path: Optional[str] = None):
         if db_path is None:
-            base_dir = Path.home() / ".agent-manager"
+            base_dir = Path.home() / ".fletcher"
             base_dir.mkdir(parents=True, exist_ok=True)
             db_path = str(base_dir / "agents.db")
 

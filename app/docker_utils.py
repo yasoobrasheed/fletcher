@@ -206,6 +206,17 @@ def attach_to_container(container_id: str):
         raise RuntimeError(f"Failed to attach to container: {e}")
 
 
+def attach_to_claude_session(container_id: str):
+    """Attach to the Claude tmux session running in the container."""
+    try:
+        subprocess.run(
+            ['docker', 'exec', '-it', container_id, 'tmux', 'attach', '-t', 'claude'],
+            check=True
+        )
+    except subprocess.CalledProcessError as e:
+        raise RuntimeError(f"Failed to attach to Claude session: {e}")
+
+
 def remove_image(image_name: str, force: bool = False) -> bool:
     try:
         cmd = ['docker', 'rmi']
